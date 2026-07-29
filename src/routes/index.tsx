@@ -1,24 +1,248 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { useRef, useState } from "react";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
+import { ChevronDown, FileText, UploadCloud } from "lucide-react";
+import { toast } from "sonner";
+import { AppShell } from "@/components/AppShell";
+import { ProcessingStepper, STAGES } from "@/components/deal/ProcessingStepper";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
+import { runScreening } from "@/lib/screening.functions";
+import { mockDeals } from "@/lib/mock-deals";
+import { cn } from "@/lib/utils";
 
-// No head() here: the home route inherits title/description/og/twitter from
-// __root.tsx, and ships no og:image so serve-time hosting can inject the
-// project's social preview (explicit og:image or latest screenshot).
 export const Route = createFileRoute("/")({
   component: Index,
+  head: () => ({
+    meta: [
+      { title: "DealScreen AI — Multifamily OM Screening in Minutes" },
+      {
+        name: "description",
+        content:
+          "Upload a multifamily offering memorandum and get cap rate, DSCR, bid sensitivity, risk flags and an investment memo in minutes.",
+      },
+      { property: "og:title", content: "DealScreen AI — Multifamily OM Screening" },
+      {
+        property: "og:description",
+        content:
+          "Automated investment screening for multifamily offering memoranda: metrics, risk flags, bid sensitivity and a written memo.",
+      },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
+    ],
+  }),
 });
 
-// IMPORTANT: Replace this placeholder. See ./README.md for routing conventions.
+const GUARDRAILS = [
+  "Rent comparables",
+  "Supply pipeline",
+  "Census income data",
+  "Public tax records",
+  "Web search",
+];
+
 function Index() {
+  const navigate = useNavigate();
+  const screen = useServerFn(runScreening);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [file, setFile] = useState<File | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [useWebSearch, setUseWebSearch] = useState(true);
+  const [disabled, setDisabled] = useState<string[]>([]);
+  const [stage, setStage] = useState<number | null>(null);
+
+  const pick = (f: File | undefined) => {
+    if (!f) return;
+    if (f.type !== "application/pdf") {
+      toast.error("Please upload a PDF offering memorandum.");
+      return;
+    }
+    setFile(f);
+  };
+
+  const run = async () => {
+    if (!file) {
+      toast.error("Upload an offering memorandum PDF first.");
+      return;
+    }
+    setStage(0);
+    const form = new FormData();
+    form.append("file", file);
+    const request = screen({ data: form }).catch(() => ({ ok: false as const }));
+    for (let i = 0; i < STAGES.length; i++) {
+      setStage(i);
+      await new Promise((r) => setTimeout(r, 750));
+    }
+    const res = await request;
+    if (!res.ok) {
+      toast("Live screening unavailable — showing a sample result.", {
+        description: "Connect an N8N_WEBHOOK_URL to screen real documents.",
+      });
+    }
+    navigate({ to: "/deal/$dealId", params: { dealId: mockDeals[2].id } });
+  };
+
+  if (stage !== null) {
+    return (
+      <AppShell>
+        <div className="py-16">
+          <ProcessingStepper active={stage} />
+        </div>
+      </AppShell>
+    );
+  }
+
   return (
-    <div
-      className="flex min-h-screen items-center justify-center"
-      style={{ backgroundColor: "#fcfbf8" }}
-    >
-      <img
-        data-lovable-blank-page-placeholder="REMOVE_THIS"
-        src="https://cdn.gpteng.co/blank-app-v1.svg"
-        alt="Your app will live here!"
-      />
+    <AppShell>
+      <div className="mx-auto max-w-2xl">
+        <h1 className="text-center text-3xl font-semibold tracking-tight">
+          Screen a multifamily deal
+        </h1>
+        <p className="mt-2 text-center text-sm text-muted-foreground">
+          Upload an offering memorandum and get metrics, risk flags, a bid
+          sensitivity ladder and a written investment memo.
+        </p>
+
+        <div
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragging(true);
+          }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDragging(false);
+            pick(e.dataTransfer.files[0]);
+          }}
+          onClick={() => inputRef.current?.click()}
+          className={cn(
+            "mt-8 cursor-pointer rounded-lg border-2 border-dashed p-12 text-center transition-colors",
+            dragging ? "border-primary bg-secondary" : "border-border bg-card",
+          )}
+        >
+          <input
+            ref={inputRef}
+            type="file"
+            accept="application/pdf"
+            className="hidden"
+            onChange={(e) => pick(e.target.files?.[0])}
+          />
+          {file ? (
+            <div className="flex flex-col items-center gap-2">
+              <FileText className="h-8 w-8 text-primary" />
+              <p className="font-medium">{file.name}</p>
+              <p className="text-xs text-muted-foreground">
+                {(file.size / 1024 / 1024).toFixed(1)} MB · click to replace
+              </p>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center gap-2">
+              <UploadCloud className="h-8 w-8 text-muted-foreground" />
+              <p className="font-medium">Drop the offering memorandum here</p>
+              <p className="text-xs text-muted-foreground">PDF only, up to 50 MB</p>
+            </div>
+          )}
+        </div>
+
+        <div className="mt-4 space-y-1.5">
+          <Label htmlFor="notes" className="text-xs tracking-wide text-muted-foreground uppercase">
+            Notes (optional)
+          </Label>
+          <Textarea id="notes" placeholder="Anything the model should know about this deal…" rows={3} />
+        </div>
+
+        <div className="card-surface mt-4 overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setSettingsOpen((o) => !o)}
+            className="flex w-full items-center justify-between px-4 py-3 text-sm font-medium"
+          >
+            Analysis settings
+            <ChevronDown className={cn("h-4 w-4 transition-transform", settingsOpen && "rotate-180")} />
+          </button>
+          {settingsOpen ? (
+            <div className="space-y-4 border-t border-border p-4">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Setting id="market" label="Target market" defaultValue="" placeholder="e.g. South Tampa" />
+                <Setting id="dscr" label="Minimum DSCR" defaultValue="1.25" />
+                <Setting id="hold" label="Hold period (years)" defaultValue="5" />
+                <Setting id="irr" label="Target IRR (%)" defaultValue="15" />
+              </div>
+              <div className="flex items-center justify-between rounded-md bg-secondary px-3 py-2">
+                <Label htmlFor="web" className="text-sm font-normal">
+                  Use web search for market data
+                </Label>
+                <Switch id="web" checked={useWebSearch} onCheckedChange={setUseWebSearch} />
+              </div>
+              <div>
+                <p className="mb-2 text-xs tracking-wide text-muted-foreground uppercase">
+                  Guardrails — disable data sources
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {GUARDRAILS.map((g) => {
+                    const off = disabled.includes(g);
+                    return (
+                      <button
+                        key={g}
+                        type="button"
+                        onClick={() =>
+                          setDisabled((d) => (off ? d.filter((i) => i !== g) : [...d, g]))
+                        }
+                        className={cn(
+                          "rounded-full border px-3 py-1 text-xs transition-colors",
+                          off
+                            ? "border-critical/40 bg-critical-soft text-critical line-through"
+                            : "border-border bg-card hover:bg-secondary",
+                        )}
+                      >
+                        {g}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </div>
+
+        <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+          <Button className="flex-1" size="lg" onClick={run}>
+            Run Screening
+          </Button>
+          <Button
+            variant="outline"
+            size="lg"
+            onClick={() => navigate({ to: "/deal/$dealId", params: { dealId: mockDeals[0].id } })}
+          >
+            Load Sample Deal
+          </Button>
+        </div>
+      </div>
+    </AppShell>
+  );
+}
+
+function Setting({
+  id,
+  label,
+  defaultValue,
+  placeholder,
+}: {
+  id: string;
+  label: string;
+  defaultValue: string;
+  placeholder?: string;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor={id} className="text-xs tracking-wide text-muted-foreground uppercase">
+        {label}
+      </Label>
+      <Input id={id} defaultValue={defaultValue} placeholder={placeholder} />
     </div>
   );
 }

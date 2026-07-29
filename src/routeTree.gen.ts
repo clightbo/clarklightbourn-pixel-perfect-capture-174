@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as PipelineRouteImport } from './routes/pipeline'
+import { Route as DealDealIdRouteImport } from './routes/deal.$dealId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -22,31 +23,40 @@ const PipelineRoute = PipelineRouteImport.update({
   path: '/pipeline',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DealDealIdRoute = DealDealIdRouteImport.update({
+  id: '/deal/$dealId',
+  path: '/deal/$dealId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/pipeline': typeof PipelineRoute
+  '/deal/$dealId': typeof DealDealIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/pipeline': typeof PipelineRoute
+  '/deal/$dealId': typeof DealDealIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/pipeline': typeof PipelineRoute
+  '/deal/$dealId': typeof DealDealIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/pipeline'
+  fullPaths: '/' | '/pipeline' | '/deal/$dealId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/pipeline'
-  id: '__root__' | '/' | '/pipeline'
+  to: '/' | '/pipeline' | '/deal/$dealId'
+  id: '__root__' | '/' | '/pipeline' | '/deal/$dealId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   PipelineRoute: typeof PipelineRoute
+  DealDealIdRoute: typeof DealDealIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -65,12 +75,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PipelineRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/deal/$dealId': {
+      id: '/deal/$dealId'
+      path: '/deal/$dealId'
+      fullPath: '/deal/$dealId'
+      preLoaderRoute: typeof DealDealIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   PipelineRoute: PipelineRoute,
+  DealDealIdRoute: DealDealIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
