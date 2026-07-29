@@ -80,7 +80,7 @@ function Index() {
     const res = await request;
     if (!res.ok) {
       toast("Live screening unavailable — showing a sample result.", {
-        description: "Connect an N8N_WEBHOOK_URL to screen real documents.",
+        description: "The screening endpoint did not return a result.",
       });
     }
     navigate({ to: "/deal/$dealId", params: { dealId: mockDeals[2].id } });
