@@ -1,6 +1,5 @@
 import { useRef, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useServerFn } from "@tanstack/react-start";
 import { ChevronDown, FileText, UploadCloud } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/AppShell";
@@ -10,7 +9,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { runScreening } from "@/lib/screening.functions";
 import { mockDeals } from "@/lib/mock-deals";
 import { cn } from "@/lib/utils";
 
@@ -44,9 +42,28 @@ const GUARDRAILS = [
   "Web search",
 ];
 
+async function handleRunScreening(file: File, settings?: any) {
+  const formData = new FormData();
+  formData.append('data', file);
+  formData.append('deal_terms', JSON.stringify(settings?.dealTerms || {}));
+  formData.append('market', JSON.stringify(settings?.market || {}));
+  formData.append('criteria', JSON.stringify(settings?.criteria || {}));
+  formData.append('assumptions', JSON.stringify(settings?.assumptions || {}));
+
+  const response = await fetch('https://clarkcbre.app.n8n.cloud/webhook/screen-om-free', {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!response.ok) {
+    throw new Error('Screening failed: ' + response.status);
+  }
+
+  return await response.json();
+}
+
 function Index() {
   const navigate = useNavigate();
-  const screen = useServerFn(runScreening);
   const inputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -70,9 +87,10 @@ function Index() {
       return;
     }
     setStage(0);
-    const form = new FormData();
-    form.append("file", file);
-    const request = screen({ data: form }).catch(() => ({ ok: false as const }));
+    const request = handleRunScreening(file, undefined).then(
+      (result) => ({ ok: true as const, result }),
+      () => ({ ok: false as const }),
+    );
     for (let i = 0; i < STAGES.length; i++) {
       setStage(i);
       await new Promise((r) => setTimeout(r, 750));
