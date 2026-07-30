@@ -8,7 +8,6 @@ import { BidSensitivity } from "@/components/deal/BidSensitivity";
 import { DealTerms } from "@/components/deal/DealTerms";
 import { MarketResearch } from "@/components/deal/MarketResearch";
 import { InvestmentSummary } from "@/components/deal/InvestmentSummary";
-import { DealChat } from "@/components/deal/DealChat";
 import { RecommendationBadge, SectionHeading } from "@/components/deal/primitives";
 import { getDeal } from "@/lib/mock-deals";
 import { fmtMoney } from "@/lib/deal-types";
@@ -115,8 +114,6 @@ function DealDashboard() {
         <MarketResearch deal={deal} />
         <InvestmentSummary deal={deal} />
       </div>
-
-      <DealChat deal={deal} />
     </AppShell>
   );
 }
