@@ -1,4 +1,5 @@
-import { createFileRoute, notFound, Link } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { MetricCard } from "@/components/deal/MetricCard";
@@ -11,13 +12,10 @@ import { DealChat } from "@/components/deal/DealChat";
 import { RecommendationBadge, SectionHeading } from "@/components/deal/primitives";
 import { getDeal } from "@/lib/mock-deals";
 import { fmtMoney } from "@/lib/deal-types";
+import { getScreeningResult } from "@/lib/screening-result";
 
 export const Route = createFileRoute("/deal/$dealId")({
-  loader: ({ params }) => {
-    const deal = getDeal(params.dealId);
-    if (!deal) throw notFound();
-    return deal;
-  },
+  loader: ({ params }) => getDeal(params.dealId) ?? null,
   head: ({ loaderData }) => {
     const title = loaderData
       ? `${loaderData.property.name} — Screening | DealScreen AI`
@@ -43,7 +41,31 @@ const pct = (n: number) => `${n.toFixed(1)}%`;
 const x = (n: number) => `${n.toFixed(2)}x`;
 
 function DealDashboard() {
-  const deal = Route.useLoaderData();
+  const { dealId } = Route.useParams();
+  const loaded = Route.useLoaderData();
+  const [deal, setDeal] = useState(loaded);
+
+  useEffect(() => {
+    // Live screening results are stored client-side after the webhook returns.
+    setDeal(getScreeningResult(dealId) ?? getDeal(dealId) ?? null);
+  }, [dealId]);
+
+  if (!deal) {
+    return (
+      <AppShell>
+        <div className="py-24 text-center">
+          <h1 className="text-xl font-semibold">Screening result not found</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            This result may have expired. Run the screening again.
+          </p>
+          <Link to="/" className="mt-4 inline-block text-sm text-primary underline">
+            Back to upload
+          </Link>
+        </div>
+      </AppShell>
+    );
+  }
+
   const m = deal.metrics;
 
   return (
