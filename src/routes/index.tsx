@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { mockDeals } from "@/lib/mock-deals";
+import { normalizeDeal, saveScreeningResult } from "@/lib/screening-result";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/")({
@@ -87,20 +88,34 @@ function Index() {
       return;
     }
     setStage(0);
-    const request = handleRunScreening(file, undefined).then(
+    const request = handleRunScreening(file, {
+      dealTerms: {},
+      market: {},
+      criteria: {},
+      assumptions: {},
+    }).then(
       (result) => ({ ok: true as const, result }),
-      () => ({ ok: false as const }),
+      (error: unknown) => ({ ok: false as const, error }),
     );
     for (let i = 0; i < STAGES.length; i++) {
       setStage(i);
       await new Promise((r) => setTimeout(r, 750));
     }
     const res = await request;
-    if (!res.ok) {
-      toast("Live screening unavailable — showing a sample result.", {
-        description: "The screening endpoint did not return a result.",
-      });
+    if (res.ok) {
+      try {
+        const deal = saveScreeningResult(normalizeDeal(res.result));
+        navigate({ to: "/deal/$dealId", params: { dealId: deal.id } });
+        return;
+      } catch {
+        toast.error("The screening response could not be read.");
+        setStage(null);
+        return;
+      }
     }
+    toast("Live screening unavailable — showing a sample result.", {
+      description: "The screening endpoint did not return a result.",
+    });
     navigate({ to: "/deal/$dealId", params: { dealId: mockDeals[2].id } });
   };
 
