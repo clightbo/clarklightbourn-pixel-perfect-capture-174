@@ -37,6 +37,48 @@ const arr = <T,>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : []);
 const obj = (v: unknown): Record<string, unknown> =>
   v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
 
+/** source_pages may be a number, an array of page refs, or an object map. */
+const countPages = (v: unknown): number => {
+  if (Array.isArray(v)) return v.length;
+  const n = num(v);
+  if (n !== null) return n;
+  if (v && typeof v === "object") return Object.keys(v as object).length;
+  return 0;
+};
+
+const CONFIDENCE_WORDS: Record<string, number> = {
+  high: 0.95,
+  "very high": 0.98,
+  medium: 0.75,
+  moderate: 0.75,
+  low: 0.5,
+  "very low": 0.3,
+  unknown: 0,
+};
+
+const confidenceValue = (v: unknown): number | null => {
+  if (v && typeof v === "object" && !Array.isArray(v)) {
+    const o = v as Record<string, unknown>;
+    return confidenceValue(o.confidence ?? o.level ?? o.value ?? o.score);
+  }
+  const n = num(v);
+  if (n !== null) return n > 1 ? n / 100 : n;
+  const w = str(v).trim().toLowerCase();
+  return w in CONFIDENCE_WORDS ? CONFIDENCE_WORDS[w] : null;
+};
+
+/** confidence may be a number, a word, or a list/map of per-field levels — average them. */
+const avgConfidence = (v: unknown): number => {
+  const items = Array.isArray(v)
+    ? v
+    : v && typeof v === "object" && confidenceValue(v) === null
+      ? Object.values(v as object)
+      : [v];
+  const vals = items.map(confidenceValue).filter((n): n is number => n !== null);
+  if (!vals.length) return 0;
+  return vals.reduce((a, b) => a + b, 0) / vals.length;
+};
+
 const SEVERITIES: Severity[] = ["CRITICAL", "HIGH", "PASS", "UNKNOWN"];
 const severity = (v: unknown): Severity => {
   const s = str(v).toUpperCase();
