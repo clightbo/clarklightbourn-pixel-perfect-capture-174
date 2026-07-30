@@ -42,7 +42,7 @@ const GUARDRAILS = [
   "Web search",
 ];
 
-async function handleRunScreening(file, settings) {
+async function handleRunScreening(file: File, settings?: any) {
   const formData = new FormData();
   formData.append('data', file);
   formData.append('deal_terms', JSON.stringify(settings?.dealTerms || {}));
