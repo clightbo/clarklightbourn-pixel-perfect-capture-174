@@ -164,8 +164,8 @@ export function normalizeDeal(raw: unknown): Deal {
     property: {
       name,
       address: str(p.address, "Address not stated in OM"),
-      units: num(p.units) ?? 0,
-      year_built: num(p.year_built),
+      units: num(p.units) ?? num(mRaw.units) ?? metric(mRaw.units).value ?? 0,
+      year_built: num(p.year_built) ?? num(mRaw.year_built) ?? metric(mRaw.year_built).value,
       submarket: str(p.submarket ?? p.market, "—"),
     },
     screened_on: str(r.screened_on, new Date().toISOString().slice(0, 10)),
@@ -222,8 +222,8 @@ export function normalizeDeal(raw: unknown): Deal {
       recommended_next_steps: arr<unknown>(n.recommended_next_steps ?? n.next_steps).map((v) => str(v)),
     },
     extraction_meta: {
-      source_pages: num(meta.source_pages) ?? 0,
-      confidence: num(meta.confidence) ?? 0,
+      source_pages: countPages(meta.source_pages),
+      confidence: avgConfidence(meta.confidence),
       missing_fields: arr<unknown>(meta.missing_fields).map((v) => str(v)),
       analyst_notes: str(meta.analyst_notes),
     },
