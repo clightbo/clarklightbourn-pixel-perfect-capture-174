@@ -29,13 +29,81 @@ const metric = (v: unknown): Metric => {
   return { value: num(v) };
 };
 
-const str = (v: unknown, fallback = ""): string =>
-  typeof v === "string" ? v : v == null ? fallback : String(v);
+/** Coerce webhook values to display strings without emitting "[object Object]". */
+const str = (v: unknown, fallback = ""): string => {
+  if (typeof v === "string") return v;
+  if (typeof v === "number" || typeof v === "boolean") return String(v);
+  if (v == null) return fallback;
+  if (Array.isArray(v)) {
+    const parts = v.map((item) => str(item)).filter(Boolean);
+    return parts.length ? parts.join("; ") : fallback;
+  }
+  if (typeof v === "object") {
+    const o = v as Record<string, unknown>;
+    const nested =
+      o.text ??
+      o.value ??
+      o.content ??
+      o.summary ??
+      o.title ??
+      o.label ??
+      o.item ??
+      o.name ??
+      o.description ??
+      o.reason ??
+      o.detail;
+    if (nested != null && nested !== v) return str(nested, fallback);
+    return fallback;
+  }
+  return fallback;
+};
 
 const arr = <T,>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : []);
 
 const obj = (v: unknown): Record<string, unknown> =>
   v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+
+const looksLikeAddress = (s: string) => /^\d+\s+\S+/.test(s.trim());
+
+/**
+ * n8n sometimes returns property as a bare string, swaps name/address, or packs
+ * both into one field ("Name — 123 Main St"). Normalize to a clean pair.
+ */
+function parseNameAddress(
+  nameRaw: string,
+  addressRaw: string,
+): { name: string; address: string } {
+  let name = nameRaw.trim();
+  let address = addressRaw.trim();
+
+  if (looksLikeAddress(name) && address && !looksLikeAddress(address)) {
+    [name, address] = [address, name];
+  }
+
+  if (!address) {
+    const splitEm =
+      name.match(/^(.*?)\s+[—–]\s+(.+)$/) ||
+      name.match(/^(.*?)\s+\|\s+(.+)$/) ||
+      name.match(/^([^,\n]+),\s+(\d+\s+.+)$/) ||
+      name.match(/^([^\n]+)\n+(.+)$/);
+    if (splitEm) {
+      const left = splitEm[1].trim();
+      const right = splitEm[2].trim();
+      if (looksLikeAddress(right) && !looksLikeAddress(left)) {
+        name = left;
+        address = right;
+      } else if (looksLikeAddress(left) && !looksLikeAddress(right)) {
+        name = right;
+        address = left;
+      }
+    }
+  }
+
+  return {
+    name: name || "Screened Deal",
+    address: address || "Address not stated in OM",
+  };
+}
 
 /** source_pages may be a number, an array of page refs, or an object map. */
 const countPages = (v: unknown): number => {
@@ -124,7 +192,8 @@ function unwrap(raw: unknown): Record<string, unknown> {
 /** Normalize an arbitrary webhook payload into the Deal shape the dashboard renders. */
 export function normalizeDeal(raw: unknown): Deal {
   const r = unwrap(raw);
-  const p = obj(r.property ?? r.subject_property ?? r.asset);
+  const propertyRaw = r.property ?? r.subject_property ?? r.asset;
+  const p = typeof propertyRaw === "string" ? {} : obj(propertyRaw);
   const mRaw = obj(r.metrics ?? r.financials ?? r.key_metrics);
   const s = obj(r.summary ?? r.risk_summary);
   const t = obj(r.deal_terms ?? r.terms);
@@ -132,7 +201,23 @@ export function normalizeDeal(raw: unknown): Deal {
   const n = obj(r.narrative ?? r.investment_summary ?? r.memo);
   const meta = obj(r.extraction_meta ?? r.extraction);
 
-  const name = str(p.name ?? p.property_name ?? r.property_name, "Screened Deal");
+  const { name, address } = parseNameAddress(
+    str(
+      (typeof propertyRaw === "string" ? propertyRaw : null) ??
+        p.name ??
+        p.property_name ??
+        r.property_name ??
+        r.name,
+      "Screened Deal",
+    ),
+    str(
+      p.address ??
+        p.property_address ??
+        p.street_address ??
+        r.property_address ??
+        r.address,
+    ),
+  );
 
   const metrics: DealMetrics = {
     noi: metric(mRaw.noi),
@@ -163,7 +248,7 @@ export function normalizeDeal(raw: unknown): Deal {
     id: slugify(name),
     property: {
       name,
-      address: str(p.address, "Address not stated in OM"),
+      address,
       units: num(p.units) ?? num(mRaw.units) ?? metric(mRaw.units).value ?? 0,
       year_built: num(p.year_built) ?? num(mRaw.year_built) ?? metric(mRaw.year_built).value,
       submarket: str(p.submarket ?? p.market, "—"),
@@ -216,10 +301,18 @@ export function normalizeDeal(raw: unknown): Deal {
     narrative: {
       headline: str(n.headline, `${name} screening result`),
       executive_summary: str(n.executive_summary ?? n.summary),
-      key_strengths: arr<unknown>(n.key_strengths ?? n.strengths).map((v) => str(v)),
-      key_concerns: arr<unknown>(n.key_concerns ?? n.concerns).map((v) => str(v)),
-      critical_questions: arr<unknown>(n.critical_questions ?? n.questions).map((v) => str(v)),
-      recommended_next_steps: arr<unknown>(n.recommended_next_steps ?? n.next_steps).map((v) => str(v)),
+      key_strengths: arr<unknown>(n.key_strengths ?? n.strengths)
+        .map((v) => str(v))
+        .filter(Boolean),
+      key_concerns: arr<unknown>(n.key_concerns ?? n.concerns)
+        .map((v) => str(v))
+        .filter(Boolean),
+      critical_questions: arr<unknown>(n.critical_questions ?? n.questions)
+        .map((v) => str(v))
+        .filter(Boolean),
+      recommended_next_steps: arr<unknown>(n.recommended_next_steps ?? n.next_steps)
+        .map((v) => str(v))
+        .filter(Boolean),
     },
     extraction_meta: {
       source_pages: countPages(meta.source_pages),
