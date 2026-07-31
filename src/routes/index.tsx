@@ -131,61 +131,81 @@ function Index() {
 
   return (
     <AppShell>
-      <div className="mx-auto max-w-2xl">
-        <h1 className="text-center text-3xl font-semibold tracking-tight">
-          Screen a multifamily deal
-        </h1>
-        <p className="mt-2 text-center text-sm text-muted-foreground">
-          Upload an offering memorandum and get metrics, risk flags, a bid
-          sensitivity ladder and a written investment memo.
-        </p>
+      <div className="mx-auto max-w-3xl animate-rise">
+        <div className="upload-stage relative px-6 py-10 sm:px-10 sm:py-12">
+          <div className="relative">
+            <p className="text-center text-[11px] font-medium tracking-[0.2em] text-muted-foreground uppercase">
+              DealScreen AI · OM screening desk
+            </p>
+            <h1 className="font-display mt-3 text-center text-3xl font-semibold tracking-tight text-balance sm:text-4xl">
+              Turn an offering memorandum into an IC brief
+            </h1>
+            <p className="mx-auto mt-3 max-w-xl text-center text-sm leading-relaxed text-muted-foreground">
+              Drop a multifamily OM PDF. We extract underwriting metrics, score
+              kill criteria, build a bid ladder, and draft the memo a portfolio
+              manager needs before the first broker call.
+            </p>
 
-        <div
-          onDragOver={(e) => {
-            e.preventDefault();
-            setDragging(true);
-          }}
-          onDragLeave={() => setDragging(false)}
-          onDrop={(e) => {
-            e.preventDefault();
-            setDragging(false);
-            pick(e.dataTransfer.files[0]);
-          }}
-          onClick={() => inputRef.current?.click()}
-          className={cn(
-            "mt-8 cursor-pointer rounded-lg border-2 border-dashed p-12 text-center transition-colors",
-            dragging ? "border-primary bg-secondary" : "border-border bg-card",
-          )}
-        >
-          <input
-            ref={inputRef}
-            type="file"
-            accept="application/pdf"
-            className="hidden"
-            onChange={(e) => pick(e.target.files?.[0])}
-          />
-          {file ? (
-            <div className="flex flex-col items-center gap-2">
-              <FileText className="h-8 w-8 text-primary" />
-              <p className="font-medium">{file.name}</p>
-              <p className="text-xs text-muted-foreground">
-                {(file.size / 1024 / 1024).toFixed(1)} MB · click to replace
-              </p>
+            <div
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDragging(true);
+              }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragging(false);
+                pick(e.dataTransfer.files[0]);
+              }}
+              onClick={() => inputRef.current?.click()}
+              className={cn(
+                "mt-8 cursor-pointer rounded-lg border-2 border-dashed p-10 text-center transition-all duration-300",
+                dragging
+                  ? "border-primary bg-secondary scale-[1.01]"
+                  : "border-border/80 bg-card/80 hover:border-primary/40",
+              )}
+            >
+              <input
+                ref={inputRef}
+                type="file"
+                accept="application/pdf"
+                className="hidden"
+                onChange={(e) => pick(e.target.files?.[0])}
+              />
+              {file ? (
+                <div className="flex flex-col items-center gap-2">
+                  <FileText className="h-8 w-8 text-primary" />
+                  <p className="font-medium">{file.name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {(file.size / 1024 / 1024).toFixed(1)} MB · click to replace
+                  </p>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center gap-2">
+                  <UploadCloud className="h-8 w-8 text-muted-foreground" />
+                  <p className="font-medium">Drop the offering memorandum here</p>
+                  <p className="text-xs text-muted-foreground">PDF only · up to 50 MB</p>
+                </div>
+              )}
             </div>
-          ) : (
-            <div className="flex flex-col items-center gap-2">
-              <UploadCloud className="h-8 w-8 text-muted-foreground" />
-              <p className="font-medium">Drop the offering memorandum here</p>
-              <p className="text-xs text-muted-foreground">PDF only, up to 50 MB</p>
+
+            <div className="mt-4 grid gap-3 text-center text-[11px] tracking-wide text-muted-foreground uppercase sm:grid-cols-3">
+              <p>Cap · DSCR · debt yield</p>
+              <p>Risk flags & kill criteria</p>
+              <p>Bid ladder + IC memo</p>
             </div>
-          )}
+          </div>
         </div>
 
-        <div className="mt-4 space-y-1.5">
+        <div className="mt-5 space-y-1.5">
           <Label htmlFor="notes" className="text-xs tracking-wide text-muted-foreground uppercase">
-            Notes (optional)
+            Notes for underwriting (optional)
           </Label>
-          <Textarea id="notes" placeholder="Anything the model should know about this deal…" rows={3} />
+          <Textarea
+            id="notes"
+            placeholder="Sponsor context, target hold, leverage preference, anything the screen should weight…"
+            rows={3}
+          />
         </div>
 
         <div className="card-surface mt-4 overflow-hidden">
@@ -194,7 +214,7 @@ function Index() {
             onClick={() => setSettingsOpen((o) => !o)}
             className="flex w-full items-center justify-between px-4 py-3 text-sm font-medium"
           >
-            Analysis settings
+            Underwriting settings
             <ChevronDown className={cn("h-4 w-4 transition-transform", settingsOpen && "rotate-180")} />
           </button>
           {settingsOpen ? (
@@ -226,7 +246,7 @@ function Index() {
                           setDisabled((d) => (off ? d.filter((i) => i !== g) : [...d, g]))
                         }
                         className={cn(
-                          "rounded-full border px-3 py-1 text-xs transition-colors",
+                          "rounded-md border px-3 py-1 text-xs transition-colors",
                           off
                             ? "border-critical/40 bg-critical-soft text-critical line-through"
                             : "border-border bg-card hover:bg-secondary",
@@ -244,14 +264,14 @@ function Index() {
 
         <div className="mt-6 flex flex-col gap-3 sm:flex-row">
           <Button className="flex-1" size="lg" onClick={run}>
-            Run Screening
+            Run screening
           </Button>
           <Button
             variant="outline"
             size="lg"
             onClick={() => navigate({ to: "/deal/$dealId", params: { dealId: mockDeals[0].id } })}
           >
-            Load Sample Deal
+            Open sample IC brief
           </Button>
         </div>
       </div>
