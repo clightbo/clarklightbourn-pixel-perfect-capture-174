@@ -100,21 +100,29 @@ function FlagCard({ flag }: { flag: RiskFlag }) {
   );
 }
 
+const SEVERITY_ORDER = { CRITICAL: 0, HIGH: 1, UNKNOWN: 2, PASS: 3 } as const;
+
 export function RiskPanel({ deal }: { deal: Deal }) {
+  const flags = [...deal.flags].sort(
+    (a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity],
+  );
+
   return (
-    <section>
+    <section id="risk" className="animate-rise">
       <SectionHeading
-        title="Risk panel"
-        description={`${deal.summary.critical} critical · ${deal.summary.high} high · ${deal.summary.unknown} unknown`}
+        title="Risk & kill criteria"
+        description={`${deal.summary.critical} critical · ${deal.summary.high} high · ${deal.summary.unknown} unknown — critical flags first`}
       />
       <div className="card-surface mb-4 p-5">
-        <Gauge score={deal.summary.risk_score} />
-        <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-          {deal.summary.rationale}
-        </p>
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <Gauge score={deal.summary.risk_score} />
+          <p className="max-w-xl text-sm leading-relaxed text-muted-foreground">
+            {deal.summary.rationale}
+          </p>
+        </div>
       </div>
       <div className="space-y-3">
-        {deal.flags.map((f) => (
+        {flags.map((f) => (
           <FlagCard key={f.id} flag={f} />
         ))}
       </div>
