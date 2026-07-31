@@ -1,17 +1,28 @@
 import { useState } from "react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { SectionHeading } from "./primitives";
+import { applyBidAssumptions, parseAssumptions } from "@/lib/bid-math";
 import type { Deal } from "@/lib/deal-types";
+import { SectionHeading } from "./primitives";
 
-export function DealTerms({ deal }: { deal: Deal }) {
+export function DealTerms({
+  deal,
+  onDealUpdate,
+}: {
+  deal: Deal;
+  onDealUpdate?: (deal: Deal) => void;
+}) {
   const priced = deal.deal_terms.stated_price !== null;
   const [terms, setTerms] = useState({
     bid: priced
       ? String(deal.deal_terms.stated_price)
-      : String(deal.bid_sensitivity[Math.floor(deal.bid_sensitivity.length / 2)].bid_price),
-    ltv: "60",
+      : String(
+          deal.bid_sensitivity[Math.floor(deal.bid_sensitivity.length / 2)]
+            ?.bid_price ?? "",
+        ),
+    ltv: String(deal.metrics.ltv.value ?? 60),
     rate: "6.5",
     amort: "30",
     minDscr: "1.25",
@@ -19,6 +30,24 @@ export function DealTerms({ deal }: { deal: Deal }) {
   });
   const set = (k: keyof typeof terms) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setTerms((t) => ({ ...t, [k]: e.target.value }));
+
+  const rerun = () => {
+    const assumptions = parseAssumptions(terms);
+    if (!assumptions) {
+      toast.error("Enter valid numbers for bid, LTV, rate, and underwriting floors.");
+      return;
+    }
+    if (deal.metrics.noi.value == null) {
+      toast.error("NOI is missing — sensitivity cannot be recomputed.");
+      return;
+    }
+    const updated = applyBidAssumptions(deal, assumptions);
+    onDealUpdate?.(updated);
+    document
+      .getElementById("bid-sensitivity")
+      ?.scrollIntoView({ behavior: "smooth" });
+    toast.success("Bid sensitivity updated.");
+  };
 
   return (
     <section id="deal-terms">
@@ -50,15 +79,7 @@ export function DealTerms({ deal }: { deal: Deal }) {
           <Field id="minDy" label="Min debt yield (%)" value={terms.minDy} onChange={set("minDy")} />
         </div>
         <div className="mt-5 flex justify-end">
-          <Button
-            onClick={() =>
-              document
-                .getElementById("bid-sensitivity")
-                ?.scrollIntoView({ behavior: "smooth" })
-            }
-          >
-            Re-run sensitivity
-          </Button>
+          <Button onClick={rerun}>Re-run sensitivity</Button>
         </div>
       </div>
     </section>
