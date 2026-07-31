@@ -3,31 +3,37 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { NotInOm } from "./primitives";
+import { cn } from "@/lib/utils";
 import type { Metric } from "@/lib/deal-types";
+import { NotInOm } from "./primitives";
 
 export function MetricCard({
   label,
   metric,
   format,
   explain,
+  emphasis = "secondary",
 }: {
   label: string;
   metric: Metric;
   format: (n: number) => string;
   explain: string;
+  /** Primary metrics are what a PM looks at before anything else. */
+  emphasis?: "primary" | "secondary";
 }) {
   const missing = metric.value === null;
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         <div
-          className={`card-surface p-4 text-left transition-shadow hover:shadow-md ${
-            missing ? "opacity-70" : ""
-          }`}
+          className={cn(
+            "card-surface text-left transition-[transform,box-shadow] duration-300 hover:-translate-y-0.5 hover:shadow-md",
+            emphasis === "primary" ? "p-5" : "p-4",
+            missing && "opacity-70",
+          )}
         >
           <div className="flex items-start justify-between gap-2">
-            <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+            <p className="text-[11px] font-medium tracking-[0.12em] text-muted-foreground uppercase">
               {label}
             </p>
             {metric.page && !missing ? (
@@ -40,7 +46,12 @@ export function MetricCard({
             {missing ? (
               <NotInOm />
             ) : (
-              <span className="num text-2xl font-semibold">
+              <span
+                className={cn(
+                  "num font-semibold tracking-tight",
+                  emphasis === "primary" ? "text-3xl" : "text-2xl",
+                )}
+              >
                 {format(metric.value as number)}
               </span>
             )}
