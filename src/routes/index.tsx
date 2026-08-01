@@ -44,7 +44,6 @@ const GUARDRAILS = [
 ];
 
 const SCREEN_ENDPOINT = "https://clarkcbre.app.n8n.cloud/webhook/screen-om-free";
-const API_KEY = (import.meta.env as Record<string, string | undefined>).VITE_SCREEN_API_KEY ?? "";
 
 export interface ScreeningSettings {
   dealTerms: Record<string, unknown>;
@@ -53,6 +52,9 @@ export interface ScreeningSettings {
   assumptions: Record<string, unknown>;
   notes?: string;
 }
+
+/** Free OpenRouter extract + memo often takes 60–180s. Do not fall back to demo. */
+const SCREENING_TIMEOUT_MS = 4 * 60 * 1000;
 
 async function handleRunScreening(file: File, settings: ScreeningSettings) {
   const formData = new FormData();
@@ -63,17 +65,31 @@ async function handleRunScreening(file: File, settings: ScreeningSettings) {
   formData.append("assumptions", JSON.stringify(settings.assumptions || {}));
   if (settings.notes) formData.append("notes", settings.notes);
 
-  const response = await fetch(SCREEN_ENDPOINT, {
-    method: "POST",
-    headers: API_KEY ? { "x-api-key": API_KEY } : undefined,
-    body: formData,
-  });
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), SCREENING_TIMEOUT_MS);
 
-  if (!response.ok) {
-    throw new Error("Screening failed: " + response.status);
+  try {
+    const response = await fetch(SCREEN_ENDPOINT, {
+      method: "POST",
+      body: formData,
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      throw new Error("Screening failed: " + response.status);
+    }
+
+    return await response.json();
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw new Error(
+        "Screening timed out after 4 minutes. Check n8n Executions — the run may still finish there.",
+      );
+    }
+    throw err;
+  } finally {
+    window.clearTimeout(timer);
   }
-
-  return await response.json();
 }
 
 function collectSettings(useWebSearch: boolean, disabledSources: string[]): ScreeningSettings {
