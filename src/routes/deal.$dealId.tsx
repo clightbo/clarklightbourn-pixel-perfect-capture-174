@@ -176,8 +176,8 @@ function DealDashboard() {
         <DealTerms deal={deal} onDealUpdate={setDeal} />
         <BidSensitivity deal={deal} />
         <RiskPanel deal={deal} />
-      <MarketResearch deal={deal} />
-      <InvestmentSummary deal={deal} />
+        <MarketResearch deal={deal} />
+        <InvestmentSummary deal={deal} />
       </div>
     </AppShell>
   );
