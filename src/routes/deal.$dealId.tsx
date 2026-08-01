@@ -5,7 +5,7 @@ import { AppShell } from "@/components/AppShell";
 import { MetricCard } from "@/components/deal/MetricCard";
 import { RiskPanel } from "@/components/deal/RiskPanel";
 import { BidSensitivity } from "@/components/deal/BidSensitivity";
-import { DealChat } from "@/components/deal/DealChat";
+
 import { DealTerms } from "@/components/deal/DealTerms";
 import { MarketResearch } from "@/components/deal/MarketResearch";
 import { InvestmentSummary } from "@/components/deal/InvestmentSummary";
