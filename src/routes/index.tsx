@@ -182,10 +182,17 @@ function Index() {
         return;
       }
     }
-    toast("Live screening unavailable — showing a sample result.", {
-      description: "The screening endpoint did not return a result. The deal below is sample data.",
+
+    // Never open the demo deal on a failed/slow run — that looked like “bad numbers.”
+    const message =
+      res.error instanceof Error
+        ? res.error.message
+        : "The screening endpoint did not return a result.";
+    toast.error("Live screening did not finish", {
+      description: `${message} Check n8n Executions — a late success there is the real result.`,
+      duration: 12000,
     });
-    navigate({ to: "/deal/$dealId", params: { dealId: mockDeals[2].id } });
+    setStage(null);
   };
 
   if (stage !== null) {
