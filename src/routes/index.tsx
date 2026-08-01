@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { ChevronDown, FileText, UploadCloud } from "lucide-react";
 import { toast } from "sonner";
@@ -9,7 +9,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { hydrateDealMetrics } from "@/lib/bid-math";
 import { mockDeals } from "@/lib/mock-deals";
 import { normalizeDeal, saveScreeningResult } from "@/lib/screening-result";
 import { cn } from "@/lib/utils";
@@ -44,29 +43,40 @@ const GUARDRAILS = [
   "Web search",
 ];
 
+const SCREEN_ENDPOINT = "https://clarkcbre.app.n8n.cloud/webhook/screen-om-free";
+
+export interface ScreeningSettings {
+  dealTerms: Record<string, unknown>;
+  market: Record<string, unknown>;
+  criteria: Record<string, unknown>;
+  assumptions: Record<string, unknown>;
+  notes?: string;
+}
+
 /** Free OpenRouter extract + memo often takes 60–180s. Do not fall back to demo. */
 const SCREENING_TIMEOUT_MS = 4 * 60 * 1000;
 
-async function handleRunScreening(file: File, settings?: any) {
+async function handleRunScreening(file: File, settings: ScreeningSettings) {
   const formData = new FormData();
   formData.append("data", file);
-  formData.append("deal_terms", JSON.stringify(settings?.dealTerms || {}));
-  formData.append("market", JSON.stringify(settings?.market || {}));
-  formData.append("criteria", JSON.stringify(settings?.criteria || {}));
-  formData.append("assumptions", JSON.stringify(settings?.assumptions || {}));
+  formData.append("deal_terms", JSON.stringify(settings.dealTerms || {}));
+  formData.append("market", JSON.stringify(settings.market || {}));
+  formData.append("criteria", JSON.stringify(settings.criteria || {}));
+  formData.append("assumptions", JSON.stringify(settings.assumptions || {}));
+  if (settings.notes) formData.append("notes", settings.notes);
 
   const controller = new AbortController();
   const timer = window.setTimeout(() => controller.abort(), SCREENING_TIMEOUT_MS);
 
   try {
-    const response = await fetch("https://clarkcbre.app.n8n.cloud/webhook/screen-om-free", {
+    const response = await fetch(SCREEN_ENDPOINT, {
       method: "POST",
       body: formData,
       signal: controller.signal,
     });
 
     if (!response.ok) {
-      throw new Error(`Screening failed: HTTP ${response.status}`);
+      throw new Error("Screening failed: " + response.status);
     }
 
     return await response.json();
@@ -82,6 +92,46 @@ async function handleRunScreening(file: File, settings?: any) {
   }
 }
 
+function collectSettings(useWebSearch: boolean, disabledSources: string[]): ScreeningSettings {
+  const val = (id: string) =>
+    (document.getElementById(id) as HTMLInputElement | HTMLTextAreaElement | null)?.value?.trim() ??
+    "";
+  const numOr = (id: string, fallback: number) => {
+    const n = Number(val(id));
+    return Number.isFinite(n) && n > 0 ? n : fallback;
+  };
+
+  const minDscr = numOr("dscr", 1.25);
+  const holdYears = numOr("hold", 5);
+  const targetIrr = numOr("irr", 15);
+  const targetMarket = val("market");
+  const notes = val("notes");
+
+  return {
+    dealTerms: {
+      min_dscr: minDscr,
+      ltv: 60,
+      interest_rate: 6.5,
+      amortization_years: 30,
+      min_debt_yield: 9,
+    },
+    assumptions: {
+      hold_years: holdYears,
+      target_irr: targetIrr,
+      rent_growth: 3,
+      expense_growth: 3,
+      sale_cost_pct: 2,
+    },
+    criteria: {},
+    market: {
+      target_market: targetMarket || undefined,
+      use_web_search: useWebSearch,
+      disabled_sources: disabledSources,
+    },
+    notes: notes || undefined,
+  };
+}
+
 function Index() {
   const navigate = useNavigate();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -91,20 +141,15 @@ function Index() {
   const [useWebSearch, setUseWebSearch] = useState(true);
   const [disabled, setDisabled] = useState<string[]>([]);
   const [stage, setStage] = useState<number | null>(null);
-  const [elapsedSec, setElapsedSec] = useState(0);
-  const [statusHint, setStatusHint] = useState("");
-
-  useEffect(() => {
-    if (stage === null) return;
-    setElapsedSec(0);
-    const id = window.setInterval(() => setElapsedSec((s) => s + 1), 1000);
-    return () => window.clearInterval(id);
-  }, [stage === null ? null : "running"]);
 
   const pick = (f: File | undefined) => {
     if (!f) return;
     if (f.type !== "application/pdf") {
       toast.error("Please upload a PDF offering memorandum.");
+      return;
+    }
+    if (f.size > 50 * 1024 * 1024) {
+      toast.error("That PDF is over 50 MB — please upload a smaller file.");
       return;
     }
     setFile(f);
@@ -116,46 +161,19 @@ function Index() {
       return;
     }
     setStage(0);
-    setStatusHint("Reading the OM PDF…");
-    const request = handleRunScreening(file, {
-      dealTerms: {
-        ltv: 60,
-        interest_rate: 6.5,
-        amortization_years: 30,
-        min_dscr: 1.25,
-        min_debt_yield: 9,
-      },
-      market: {},
-      criteria: {},
-      assumptions: {
-        hold_years: 5,
-        rent_growth: 3,
-        expense_growth: 3,
-        sale_cost_pct: 2,
-        target_irr: 15,
-      },
-    }).then(
+    const settings = collectSettings(useWebSearch, disabled);
+    const request = handleRunScreening(file, settings).then(
       (result) => ({ ok: true as const, result }),
       (error: unknown) => ({ ok: false as const, error }),
     );
-
-    // Animate stages while waiting — do NOT treat animation end as failure.
     for (let i = 0; i < STAGES.length; i++) {
       setStage(i);
-      setStatusHint(
-        i < 2
-          ? "Extract model is reading the OM (often 1–3 min on free models)…"
-          : "Still running in n8n — stay on this page until it finishes…",
-      );
-      await new Promise((r) => setTimeout(r, 900));
+      await new Promise((r) => setTimeout(r, 750));
     }
-    setStage(STAGES.length - 1);
-    setStatusHint("Waiting on n8n webhook response…");
-
     const res = await request;
     if (res.ok) {
       try {
-        const deal = saveScreeningResult(hydrateDealMetrics(normalizeDeal(res.result)));
+        const deal = saveScreeningResult(normalizeDeal(res.result));
         navigate({ to: "/deal/$dealId", params: { dealId: deal.id } });
         return;
       } catch {
@@ -182,13 +200,6 @@ function Index() {
       <AppShell>
         <div className="py-16">
           <ProcessingStepper active={stage} />
-          <p className="mx-auto mt-6 max-w-md text-center text-sm text-muted-foreground">
-            {statusHint}
-          </p>
-          <p className="mx-auto mt-2 max-w-md text-center text-xs text-muted-foreground">
-            Elapsed {elapsedSec}s · free extract models often take 60–180s. Do not leave this
-            page — a demo will no longer load on timeout.
-          </p>
         </div>
       </AppShell>
     );
@@ -196,79 +207,63 @@ function Index() {
 
   return (
     <AppShell>
-      <div className="mx-auto max-w-3xl animate-rise">
-        <div className="upload-stage relative px-6 py-10 sm:px-10 sm:py-12">
-          <div className="relative">
-            <p className="text-center text-[11px] font-medium tracking-[0.2em] text-muted-foreground uppercase">
-              DealScreen AI · OM screening desk
-            </p>
-            <h1 className="font-display mt-3 text-center text-3xl font-semibold tracking-tight text-balance sm:text-4xl">
-              Turn an offering memorandum into an IC brief
-            </h1>
-            <p className="mx-auto mt-3 max-w-xl text-center text-sm leading-relaxed text-muted-foreground">
-              Drop a multifamily OM PDF. We extract underwriting metrics, score
-              kill criteria, build a bid ladder, and draft the memo a portfolio
-              manager needs before the first broker call.
-            </p>
+      <div className="mx-auto max-w-2xl">
+        <h1 className="text-center text-3xl font-semibold tracking-tight">
+          Screen a multifamily deal
+        </h1>
+        <p className="mt-2 text-center text-sm text-muted-foreground">
+          Upload an offering memorandum and get metrics, risk flags, a bid sensitivity ladder and a
+          written investment memo.
+        </p>
 
-            <div
-              onDragOver={(e) => {
-                e.preventDefault();
-                setDragging(true);
-              }}
-              onDragLeave={() => setDragging(false)}
-              onDrop={(e) => {
-                e.preventDefault();
-                setDragging(false);
-                pick(e.dataTransfer.files[0]);
-              }}
-              onClick={() => inputRef.current?.click()}
-              className={cn(
-                "mt-8 cursor-pointer rounded-lg border-2 border-dashed p-10 text-center transition-all duration-300",
-                dragging
-                  ? "border-primary bg-secondary scale-[1.01]"
-                  : "border-border/80 bg-card/80 hover:border-primary/40",
-              )}
-            >
-              <input
-                ref={inputRef}
-                type="file"
-                accept="application/pdf"
-                className="hidden"
-                onChange={(e) => pick(e.target.files?.[0])}
-              />
-              {file ? (
-                <div className="flex flex-col items-center gap-2">
-                  <FileText className="h-8 w-8 text-primary" />
-                  <p className="font-medium">{file.name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {(file.size / 1024 / 1024).toFixed(1)} MB · click to replace
-                  </p>
-                </div>
-              ) : (
-                <div className="flex flex-col items-center gap-2">
-                  <UploadCloud className="h-8 w-8 text-muted-foreground" />
-                  <p className="font-medium">Drop the offering memorandum here</p>
-                  <p className="text-xs text-muted-foreground">PDF only · up to 50 MB</p>
-                </div>
-              )}
+        <div
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragging(true);
+          }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDragging(false);
+            pick(e.dataTransfer.files[0]);
+          }}
+          onClick={() => inputRef.current?.click()}
+          className={cn(
+            "mt-8 cursor-pointer rounded-lg border-2 border-dashed p-12 text-center transition-colors",
+            dragging ? "border-primary bg-secondary" : "border-border bg-card",
+          )}
+        >
+          <input
+            ref={inputRef}
+            type="file"
+            accept="application/pdf"
+            className="hidden"
+            onChange={(e) => pick(e.target.files?.[0])}
+          />
+          {file ? (
+            <div className="flex flex-col items-center gap-2">
+              <FileText className="h-8 w-8 text-primary" />
+              <p className="font-medium">{file.name}</p>
+              <p className="text-xs text-muted-foreground">
+                {(file.size / 1024 / 1024).toFixed(1)} MB · click to replace
+              </p>
             </div>
-
-            <div className="mt-4 grid gap-3 text-center text-[11px] tracking-wide text-muted-foreground uppercase sm:grid-cols-3">
-              <p>Cap · DSCR · debt yield</p>
-              <p>Risk flags & kill criteria</p>
-              <p>Bid ladder + IC memo</p>
+          ) : (
+            <div className="flex flex-col items-center gap-2">
+              <UploadCloud className="h-8 w-8 text-muted-foreground" />
+              <p className="font-medium">Drop the offering memorandum here</p>
+              <p className="text-xs text-muted-foreground">PDF only, up to 50 MB</p>
             </div>
-          </div>
+          )}
         </div>
 
-        <div className="mt-5 space-y-1.5">
+        <div className="mt-4 space-y-1.5">
           <Label htmlFor="notes" className="text-xs tracking-wide text-muted-foreground uppercase">
-            Notes for underwriting (optional)
+            Notes (optional)
           </Label>
           <Textarea
             id="notes"
-            placeholder="Sponsor context, target hold, leverage preference, anything the screen should weight…"
+            placeholder="Anything the model should know about this deal…"
             rows={3}
           />
         </div>
@@ -279,13 +274,20 @@ function Index() {
             onClick={() => setSettingsOpen((o) => !o)}
             className="flex w-full items-center justify-between px-4 py-3 text-sm font-medium"
           >
-            Underwriting settings
-            <ChevronDown className={cn("h-4 w-4 transition-transform", settingsOpen && "rotate-180")} />
+            Analysis settings
+            <ChevronDown
+              className={cn("h-4 w-4 transition-transform", settingsOpen && "rotate-180")}
+            />
           </button>
           {settingsOpen ? (
             <div className="space-y-4 border-t border-border p-4">
               <div className="grid gap-4 sm:grid-cols-2">
-                <Setting id="market" label="Target market" defaultValue="" placeholder="e.g. South Tampa" />
+                <Setting
+                  id="market"
+                  label="Target market"
+                  defaultValue=""
+                  placeholder="e.g. South Tampa"
+                />
                 <Setting id="dscr" label="Minimum DSCR" defaultValue="1.25" />
                 <Setting id="hold" label="Hold period (years)" defaultValue="5" />
                 <Setting id="irr" label="Target IRR (%)" defaultValue="15" />
@@ -311,7 +313,7 @@ function Index() {
                           setDisabled((d) => (off ? d.filter((i) => i !== g) : [...d, g]))
                         }
                         className={cn(
-                          "rounded-md border px-3 py-1 text-xs transition-colors",
+                          "rounded-full border px-3 py-1 text-xs transition-colors",
                           off
                             ? "border-critical/40 bg-critical-soft text-critical line-through"
                             : "border-border bg-card hover:bg-secondary",
@@ -329,14 +331,14 @@ function Index() {
 
         <div className="mt-6 flex flex-col gap-3 sm:flex-row">
           <Button className="flex-1" size="lg" onClick={run}>
-            Run screening
+            Run Screening
           </Button>
           <Button
             variant="outline"
             size="lg"
             onClick={() => navigate({ to: "/deal/$dealId", params: { dealId: mockDeals[0].id } })}
           >
-            Open sample IC brief
+            Load Sample Deal
           </Button>
         </div>
       </div>
