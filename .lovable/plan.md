@@ -2,6 +2,11 @@ Apply the four files from `https://github.com/clightbo/personal-automation-hub/t
 
 ## What we will do
 
+0. Clean up the build errors that currently block the project.
+   - The src/ root contains duplicate/broken files that shadow the canonical components and routes: `src/BidSensitivity.tsx`, `src/DealSectionNav.tsx`, `src/DealTerms.tsx`, `src/InvestmentSummary.tsx`, `src/MetricCard.tsx`, `src/RiskPanel.tsx`, `src/deal.$dealId.tsx`, `src/index.tsx`, `src/pipeline.tsx`, `src/primitives.tsx`, `src/screening-result.ts`.
+   - These files have broken relative imports (`./primitives` self-reference, `../lib/lovable-error-reporting` from src root, `./deal-types` from a misplaced file) and are causing the TypeScript errors listed above.
+   - Delete these duplicate files. The canonical versions live in `src/components/deal/` and `src/routes/` and `src/lib/` and are not affected.
+
 1. Fetch the four target files from the public GitHub raw URLs and overwrite the matching files in the project:
    - `src/components/deal/DealChat.tsx`
    - `src/routes/index.tsx`
